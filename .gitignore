@@ -5,4 +5,10 @@
 *.mod
 *.symvers
 *.order
-*.mod.*
+*.mod.c
+*.mod.o
+*.mod.cmd
+*.mod.o.cmd
+*.ko.cmd
+*.o.cmd
+*.ko.btf
