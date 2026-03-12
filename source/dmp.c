@@ -12,15 +12,28 @@ static int dmp_stat_calls = 0;
 static struct kobject* dmp_module;
 
 static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
-  // TODO:
   LOG("ctr called");
+  if (argc != 1) {
+    LOG("expecting only path to device");
+    return -EINVAL;
+  }
+  char* path = argv[0];
+  char* name = path;
+  for (char* c = path; *c; ++c) {
+    if (*c == '/')
+      name = c;
+  }
+  ++name; // skip `/`
+  LOG("path: %s", path);
+  LOG("name: %s", name);
+  // TODO: use `name` to create a file with stats
   return -EINVAL;
 }
 
 static int dmp_map(struct dm_target* ti, struct bio* bio) {
   // TODO:
   LOG("map called");
-  return -EINVAL;
+  return 0;
 }
 
 static void dmp_io_hints(struct dm_target* ti, struct queue_limits* limits) {
