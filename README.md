@@ -51,11 +51,10 @@ cd .. && scp -P 2222 -r device-mapper-proxy/ root@localhost:~
 
 ```bash
 make
-sudo insmod source.dmp.ko
 sudo lsmod | grep dm_mod
+sudo modprobe dm_mod # if previous showed nothing
+sudo insmod source.dmp.ko
 ```
-
-If `dm_mod` was not found, `sudo modprobe dm_mod`.
 
 ```bash
 sudo dmsetup create zero1 --table "0 1 zero"
