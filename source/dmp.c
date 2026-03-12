@@ -1,20 +1,57 @@
-#include <linux/module.h>
-#include <linux/printk.h>
-#include <linux/kobject.h>
+#include "dmp.h"
 
-#include <linux/device-mapper.h>
+struct list {
+  struct dmpstats stats;
+  struct list* next;
+  struct list* prev;
+} list_head;
 
-#define MODULE_NAME "dmp"
+static void list_init(void) {
+  list_head.next = &list_head;
+  list_head.prev = &list_head;
+}
 
-#define LOG(fmt, ...) pr_info("[" MODULE_NAME "]: " fmt, ##__VA_ARGS__)
+static int list_push(struct dmpstats contents) {
+  struct list* node = (struct list*) kvmalloc(sizeof(*node), GFP_KERNEL);
+  if (node == NULL) {
+    LOG("could not allocate node");
+    return -ENOMEM;
+  }
+  node->prev = &list_head;
+  node->next = list_head.next;
+  list_head.next = node;
+  node->next->prev = node;
+  node->stats = contents;
+  return 0;
+}
 
-static int dmp_stat_calls = 0;
-static struct kobject* dmp_module;
+static void list_destroy(void) {
+  struct list* node = list_head.next;
+  while (node != &list_head) {
+    kobject_put(node->stats.module);
+    struct list* tmp = node->next;
+    kvfree(node);
+    node = tmp;
+  }
+}
+
+static struct kobj_attribute dmp_stat_attr = __ATTR(dmp_stats, 0660, dmp_stat_show, dmp_stat_store);
+
+static struct target_type dmp_target = {
+  .name     = "dmp",
+  .version  = {1, 0, 0},
+  .features = DM_TARGET_NOWAIT,
+  .module   = THIS_MODULE,
+  .ctr      = dmp_ctr,
+  .map      = dmp_map,
+  .dtr      = dmp_dtr,
+};
 
 static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   LOG("ctr called");
   if (argc != 1) {
     LOG("expecting only path to device");
+    ti->error = "expecting only path to device";
     return -EINVAL;
   }
   char* path = argv[0];
@@ -26,25 +63,64 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   ++name; // skip `/`
   LOG("path: %s", path);
   LOG("name: %s", name);
-  // TODO: use `name` to create a file with stats
-  return -EINVAL;
-}
-
-static int dmp_map(struct dm_target* ti, struct bio* bio) {
-  // TODO:
-  LOG("map called");
+  struct dmpstats dmp_stats = {0};
+  struct kobject* dmp_module = kobject_create_and_add(name, kernel_kobj);
+  if (dmp_module == NULL) {
+    LOG("could not create kobject for %s", name);
+    ti->error = "could not create object";
+    return -ENOMEM;
+  }
+  LOG("dmp_module kobject created");
+  int ret = sysfs_create_file(dmp_module, &dmp_stat_attr.attr);
+  if (ret) {
+    LOG("failed to create file");
+    kobject_put(dmp_module);
+    ti->error = "could not create file";
+    return ret;
+  }
+  LOG("file created");
+  dmp_stats.module = dmp_module;
+  if ((ret = list_push(dmp_stats))) {
+    LOG("could not push to list, no mem");
+    ti->error = "could not push to list";
+    kobject_put(dmp_module);
+    return ret;
+  }
+  LOG("pushed to list");
+  LOG("ctr OK, proceeding...");
+  ti->private = list_head.next;
+  LOG("NOTE: ti->private = 0x%lx", ti->private);
   return 0;
 }
 
-static void dmp_io_hints(struct dm_target* ti, struct queue_limits* limits) {
-  LOG("io hints called");
+void dmp_dtr(struct dm_target* ti) {
+  LOG("dtr called");
+  struct list* node = (struct list*)ti->private;
+  LOG("deleting %s", node->stats.module->name);
+  node->prev->next = node->next;
+  node->next->prev = node->prev;
+  kobject_put(node->stats.module);
+  kvfree(node);
+  LOG("successfully deleted");
+}
+
+static int dmp_map(struct dm_target* ti, struct bio* bio) {
+  LOG("map called");
+  if (ti == NULL || ti->private == NULL) {
+    LOG("ti or private is NULL, ti=0x%lx", ti);
+    return -EINVAL;
+  }
+  LOG("NOTE: ti->private = 0x%lx", ti->private);
+  struct list* node = (struct list*)ti->private;
+  LOG("mapping %s", node->stats.module->name);
   // TODO:
+  return DMP_COMPLETE;
 }
 
 static ssize_t dmp_stat_show(struct kobject* kobj,
                              struct kobj_attribute* attr,
                              char* buf) {
-  return sprintf(buf, "Nothing to see here yet, %d\n", ++dmp_stat_calls);
+  return sprintf(buf, "Nothing to see here yet(%s)\n", kobj->name);
 }
 
 static ssize_t dmp_stat_store(struct kobject* kobj,
@@ -53,35 +129,17 @@ static ssize_t dmp_stat_store(struct kobject* kobj,
   return -EPERM;
 }
 
-static struct kobj_attribute dmp_stat_attr = __ATTR(dmp_stat_calls, 0660, dmp_stat_show, dmp_stat_store);
-
-static struct target_type dmp_target = {
-	.name   = "dmp",
-	.version = {1, 0, 0},
-	.features = DM_TARGET_NOWAIT,
-	.module = THIS_MODULE,
-	.ctr    = dmp_ctr,
-	.map    = dmp_map,
-	.io_hints = dmp_io_hints,
-};
-
 static int __init dmp_init(void) {
   LOG("init");
+  list_init();
   dm_register_target(&dmp_target);
-  dmp_module = kobject_create_and_add("dmp_module", kernel_kobj);
-  if (dmp_module == NULL)
-    return -ENOMEM;
-  int ret = sysfs_create_file(dmp_module, &dmp_stat_attr.attr);
-  if (ret) {
-    kobject_put(dmp_module);
-    LOG("could not create file\n");
-  }
-  return ret;
+  LOG("registered dmp_target");
+  return 0;
 }
 
 static void __exit dmp_exit(void) {
   LOG("exit");
-  kobject_put(dmp_module);
+  list_destroy();
   dm_unregister_target(&dmp_target);
 }
 
