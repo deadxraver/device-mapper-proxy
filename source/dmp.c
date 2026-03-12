@@ -16,8 +16,8 @@ static ssize_t dmp_stat_show(struct kobject* kobj,
 }
 
 static ssize_t dmp_stat_store(struct kobject* kobj,
-                             struct kobj_attribute* attr,
-                             const char* buf, size_t count) {
+                              struct kobj_attribute* attr,
+                              const char* buf, size_t count) {
   return -EPERM;
 }
 
