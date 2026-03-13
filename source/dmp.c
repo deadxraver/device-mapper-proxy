@@ -39,6 +39,14 @@ static int list_push(struct dmpstats contents) {
   return 0;
 }
 
+static struct list* list_get_by_name(const char* name) {
+  for (struct list* node = list_head.next; node != &list_head; node = node->next) {
+    if (strcmp(node->stats.module->name, name) == 0)
+      return node;
+  }
+  return NULL;
+}
+
 static void list_destroy(void) {
   struct list* node = list_head.next;
   while (node != &list_head) {
@@ -127,7 +135,14 @@ static int dmp_map(struct dm_target* ti, struct bio* bio) {
   LOG("NOTE: ti->private = 0x%lx", ti->private);
   struct list* node = (struct list*)ti->private;
   LOG("mapping %s", node->stats.module->name);
-  // TODO:
+  if (bio_op(bio) == REQ_OP_READ) {
+    ++(node->stats.r_reqs);
+    node->stats.r_blk_sum += bio->bi_iter.bi_size;
+  }
+  if (bio_op(bio) == REQ_OP_WRITE) {
+    ++(node->stats.w_reqs);
+    node->stats.w_blk_sum += bio->bi_iter.bi_size;
+  }
   bio_set_dev(bio, node->stats.ddev->bdev);
   submit_bio_noacct(bio);
   return DM_MAPIO_SUBMITTED;
@@ -136,7 +151,31 @@ static int dmp_map(struct dm_target* ti, struct bio* bio) {
 static ssize_t dmp_stat_show(struct kobject* kobj,
                              struct kobj_attribute* attr,
                              char* buf) {
-  return sprintf(buf, "Nothing to see here yet(%s)\n", kobj->name);
+  struct list* node = list_get_by_name(kobj->name);
+  if (node == NULL) {
+    LOG("could not find %s", kobj->name);
+    return -ENOENT;
+  }
+  struct dmpstats dmp_stats = node->stats;
+  return sprintf(
+    buf,
+    "read:\n"
+    "\treqs: %u\n"
+    "\tavg size: %ld\n"
+    "write:\n"
+    "\treqs: %u\n"
+    "\tavg_size: %ld\n"
+    "total:\n"
+    "\treqs: %u\n"
+    "\tavg_size: %ld\n"
+    ,
+    dmp_stats.r_reqs,
+    dmp_stats.r_reqs == 0 ? 0 : (dmp_stats.r_blk_sum / dmp_stats.r_reqs),
+    dmp_stats.w_reqs,
+    dmp_stats.w_reqs == 0 ? 0 : (dmp_stats.w_blk_sum / dmp_stats.w_reqs),
+    dmp_stats.r_reqs + dmp_stats.w_reqs,
+    (dmp_stats.r_reqs + dmp_stats.w_reqs) == 0 ? 0 : ((dmp_stats.r_blk_sum + dmp_stats.w_blk_sum) / (dmp_stats.r_reqs + dmp_stats.w_reqs))
+  );
 }
 
 static ssize_t dmp_stat_store(struct kobject* kobj,
