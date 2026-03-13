@@ -134,12 +134,12 @@ static int dmp_map(struct dm_target* ti, struct bio* bio) {
   struct list* node = (struct list*)ti->private;
   LOG("mapping %s", node->stats.module->name);
   if (bio_op(bio) == REQ_OP_READ) {
-    ++(node->stats.r_reqs);
-    node->stats.r_blk_sum += bio->bi_iter.bi_size;
+    atomic_inc(&node->stats.r_reqs);
+    atomic64_add(bio->bi_iter.bi_size, &node->stats.r_blk_sum);
   }
   if (bio_op(bio) == REQ_OP_WRITE) {
-    ++(node->stats.w_reqs);
-    node->stats.w_blk_sum += bio->bi_iter.bi_size;
+    atomic_inc(&node->stats.w_reqs);
+    atomic64_add(bio->bi_iter.bi_size, &node->stats.w_blk_sum);
   }
   bio_set_dev(bio, node->stats.ddev->bdev);
   submit_bio_noacct(bio);
@@ -154,7 +154,10 @@ static ssize_t dmp_stat_show(struct kobject* kobj,
     ERR("could not find %s", kobj->name);
     return -ENOENT;
   }
-  struct dmpstats dmp_stats = node->stats;
+  unsigned rr = atomic_read(&node->stats.r_reqs);
+  unsigned wr = atomic_read(&node->stats.w_reqs);
+  long rb = atomic64_read(&node->stats.r_blk_sum);
+  long wb = atomic64_read(&node->stats.w_blk_sum);
   return sprintf(
     buf,
     "read:\n"
@@ -167,12 +170,12 @@ static ssize_t dmp_stat_show(struct kobject* kobj,
     "\treqs: %u\n"
     "\tavg size: %ld\n"
     ,
-    dmp_stats.r_reqs,
-    dmp_stats.r_reqs == 0 ? 0 : (dmp_stats.r_blk_sum / dmp_stats.r_reqs),
-    dmp_stats.w_reqs,
-    dmp_stats.w_reqs == 0 ? 0 : (dmp_stats.w_blk_sum / dmp_stats.w_reqs),
-    dmp_stats.r_reqs + dmp_stats.w_reqs,
-    (dmp_stats.r_reqs + dmp_stats.w_reqs) == 0 ? 0 : ((dmp_stats.r_blk_sum + dmp_stats.w_blk_sum) / (dmp_stats.r_reqs + dmp_stats.w_reqs))
+    rr,
+    rr == 0 ? 0 : (rb / rr),
+    wr,
+    wr == 0 ? 0 : (wb / wr),
+    rr + wr,
+    (rr + wr) == 0 ? 0 : ((rb + wb) / (rr + wr))
   );
 }
 

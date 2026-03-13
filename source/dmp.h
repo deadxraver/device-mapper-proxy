@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/printk.h>
 #include <linux/mm.h>
+#include <linux/types.h>
 
 #include <linux/device-mapper.h>
 
@@ -23,10 +24,10 @@
 struct dmpstats {
   struct kobject* module;
   struct dm_dev* ddev;
-  unsigned r_reqs;  // read requests
-  unsigned w_reqs;  // write requests
-  size_t r_blk_sum; // sum of blocks to read
-  size_t w_blk_sum; // sum of blocks to write
+  atomic_t r_reqs;  // read requests
+  atomic_t w_reqs;  // write requests
+  atomic64_t r_blk_sum; // sum of blocks to read
+  atomic64_t w_blk_sum; // sum of blocks to write
 };
 
 static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]);
