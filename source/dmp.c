@@ -62,7 +62,7 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   LOG("ctr called");
   int ret;
   if (argc != 1) {
-    WARN("expecting only path to device");
+    WRN("expecting only path to device");
     ti->error = "expecting only path to device";
     return -EINVAL;
   }
@@ -78,7 +78,7 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   struct dmpstats dmp_stats = {0};
   ret = dm_get_device(ti, path, dm_table_get_mode(ti->table), &dmp_stats.ddev);
   if (ret) {
-    WARN("error getting device");
+    WRN("error getting device");
     ti->error = "cannot open device";
     return ret;
   }
@@ -128,10 +128,9 @@ void dmp_dtr(struct dm_target* ti) {
 static int dmp_map(struct dm_target* ti, struct bio* bio) {
   LOG("map called");
   if (ti == NULL || ti->private == NULL) {
-    ERR("ti or private is NULL, ti=0x%lx", ti);
+    ERR("ti or private is NULL, ti=0x%lx", (unsigned long)ti);
     return -EINVAL;
   }
-  LOG("NOTE: ti->private = 0x%lx", ti->private);
   struct list* node = (struct list*)ti->private;
   LOG("mapping %s", node->stats.module->name);
   if (bio_op(bio) == REQ_OP_READ) {
