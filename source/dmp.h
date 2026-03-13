@@ -16,11 +16,6 @@
 #define WRN(fmt, ...) pr_warn("[" MODULE_NAME "]: " fmt, ##__VA_ARGS__)
 #define ERR(fmt, ...) pr_err("[" MODULE_NAME "]: " fmt, ##__VA_ARGS__)
 
-// consts for map return
-#define DMP_RESUBMIT  0
-#define DMP_COMPLETE  1
-#define DMP_PUSH_BACK 2
-
 struct dmpstats {
   struct kobject module;
   struct dm_dev* ddev;
