@@ -28,7 +28,7 @@ static void list_init(void) {
 static int list_push(struct dmpstats contents) {
   struct list* node = (struct list*) kvmalloc(sizeof(*node), GFP_KERNEL);
   if (node == NULL) {
-    LOG("could not allocate node");
+    ERR("could not allocate node");
     return -ENOMEM;
   }
   node->prev = &list_head;
