@@ -30,10 +30,12 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   int ret;
   struct kobject* dmp_module = NULL;
   struct dmpstats* dmp_stats = NULL;
+  ti->private = NULL;
   if (argc != 1) {
     WRN("expecting only path to device");
     ti->error = "expecting only path to device";
-    return -EINVAL;
+    ret = -EINVAL;
+    goto error;
   }
   char* path = argv[0];
   char* name = path;
@@ -47,41 +49,50 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   dmp_stats = (struct dmpstats*)kvmalloc(sizeof(struct dmpstats), GFP_KERNEL);
   if (dmp_stats == NULL) {
     ERR("could not allocate memory for dmp_stats");
-    return -ENOMEM;
+    ti->error = "not enough memory";
+    ret = -ENOMEM;
+    goto error;
   }
   atomic_set(&dmp_stats->r_reqs, 0);
   atomic_set(&dmp_stats->w_reqs, 0);
   atomic64_set(&dmp_stats->r_blk_sum, 0);
   atomic64_set(&dmp_stats->w_blk_sum, 0);
-  dmp_module = &dmp_stats->module;
+  dmp_stats->ddev = NULL;
   ti->private = dmp_stats;
   ret = dm_get_device(ti, path, dm_table_get_mode(ti->table), &dmp_stats->ddev);
   if (ret) {
     WRN("error getting device");
     ti->error = "cannot open device";
-    kvfree(ti->private);
-    ti->private = NULL;
-    return ret;
+    goto error;
   }
+  dmp_module = &dmp_stats->module;
   ret = kobject_init_and_add(dmp_module, &dmp_kobj_type, &dmp_root->kobj, "%s", name);
   if (ret) {
-    ERR("could not init object");
-    kvfree(ti->private);
-    ti->private = NULL;
-    return ret;
+    ERR("could not init kobject");
+    dmp_module = NULL;
+    ti->error = "could not init kobject";
+    goto error;
   }
   ret = sysfs_create_file(dmp_module, &dmp_stat_attr.attr);
   if (ret) {
     ERR("failed to create sysfs file");
-    dm_put_device(ti, dmp_stats->ddev);
-    kobject_put(dmp_module);
-    kvfree(ti->private);
-    ti->private = NULL;
-    ti->error = "could not create file";
-    return ret;
+    ti->error = "failed to create sysfs file";
+    goto error;
   }
   LOG("file created");
   return 0;
+error:
+  if (dmp_stats && dmp_stats->ddev) {
+    dm_put_device(ti, dmp_stats->ddev);
+  }
+  if (dmp_module) {
+    kobject_put(dmp_module);
+  }
+  if (ti->private) {
+    kvfree(ti->private);
+    ti->private = NULL;
+  }
+  return ret;
 }
 
 static void dmp_dtr(struct dm_target* ti) {
