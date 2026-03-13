@@ -89,10 +89,10 @@ cat /sys/kernel/dmp/zero1/dmp_stats
 	avg size: 4096
 write:
 	reqs: 0
-	avg_size: 0
+	avg size: 0
 total:
 	reqs: 62
-	avg_size: 4096
+	avg size: 4096
 ```
 
 Read & write to device & check stats again:
@@ -108,10 +108,10 @@ read:
 	avg size: 4096
 write:
 	reqs: 1
-	avg_size: 4096
+	avg size: 4096
 total:
 	reqs: 64
-	avg_size: 4096
+	avg size: 4096
 ```
 
 ## Cleanup

@@ -164,10 +164,10 @@ static ssize_t dmp_stat_show(struct kobject* kobj,
     "\tavg size: %ld\n"
     "write:\n"
     "\treqs: %u\n"
-    "\tavg_size: %ld\n"
+    "\tavg size: %ld\n"
     "total:\n"
     "\treqs: %u\n"
-    "\tavg_size: %ld\n"
+    "\tavg size: %ld\n"
     ,
     dmp_stats.r_reqs,
     dmp_stats.r_reqs == 0 ? 0 : (dmp_stats.r_blk_sum / dmp_stats.r_reqs),
