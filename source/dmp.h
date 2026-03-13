@@ -20,6 +20,7 @@
 
 struct dmpstats {
   struct kobject* module;
+  struct dm_dev* ddev;
   unsigned r_reqs;  // read requests
   unsigned w_reqs;  // write requests
   size_t r_blk_sum; // sum of blocks to read
