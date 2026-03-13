@@ -1,5 +1,14 @@
 # Device Mapper Proxy
 
+## Description
+
+This is a Device Mapper Proxy kernel module.
+It is used to collect statistics on real devices
+(read/write requests/avg blk size).
+
+It is tested on Debian 13 for riscv64, kernel version 6.12.74.
+It is not guaranteed to be built successfully for other distros/archs/kern vers.
+
 ## Setup VM (if needed)
 
 ```bash
@@ -49,6 +58,7 @@ If using VM, first run from **local machine**:
 cd .. && scp -P 2222 -r device-mapper-proxy/ root@localhost:~
 ```
 
+Build and install:
 ```bash
 make
 sudo lsmod | grep dm_mod
@@ -56,12 +66,14 @@ sudo modprobe dm_mod # if previous showed nothing
 sudo insmod source/dmp.ko
 ```
 
+Create test devices:
 ```bash
 sudo dmsetup create zero1 --table "0 10000 zero"
 ls -la /dev/mapper/ | grep zero
 sudo dmsetup create dmp1 --table "0 10000 dmp /dev/mapper/zero1"
 ```
 
+Check statistics:
 ```bash
 ls -la /sys/kernel/dmp/
 # total 0
@@ -83,6 +95,7 @@ total:
 	avg_size: 4096
 ```
 
+Read & write to device & check stats again:
 ```bash
 dd if=/dev/urandom of=/dev/mapper/dmp1 oflag=direct bs=4K count=1
 dd if=/dev/mapper/dmp1 of=/dev/null iflag=direct bs=4K count=1
