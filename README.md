@@ -24,7 +24,7 @@ $QEMU \
 	-machine virt \
 	-nographic \
 	-m 5G \
-	-smp $(shell nproc) \
+	-smp $(nproc) \
 	-bios default \
 	-kernel /usr/lib/u-boot/qemu-riscv64_smode/uboot.elf \
 	-device virtio-rng-pci \
