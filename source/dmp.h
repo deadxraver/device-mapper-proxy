@@ -12,6 +12,8 @@
 #define MODULE_NAME "dmp"
 
 #define LOG(fmt, ...) pr_info("[" MODULE_NAME "]: " fmt, ##__VA_ARGS__)
+#define WARN(fmt, ...) pr_warn("[" MODULE_NAME "]: " fmt, ##__VA_ARGS__)
+#define ERR(fmt, ...) pr_err("[" MODULE_NAME "]: " fmt, ##__VA_ARGS__)
 
 // consts for map return
 #define DMP_RESUBMIT  0

@@ -62,7 +62,7 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   LOG("ctr called");
   int ret;
   if (argc != 1) {
-    LOG("expecting only path to device");
+    WARN("expecting only path to device");
     ti->error = "expecting only path to device";
     return -EINVAL;
   }
@@ -78,20 +78,20 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   struct dmpstats dmp_stats = {0};
   ret = dm_get_device(ti, path, dm_table_get_mode(ti->table), &dmp_stats.ddev);
   if (ret) {
-    LOG("error getting device");
+    WARN("error getting device");
     ti->error = "cannot open device";
     return ret;
   }
   struct kobject* dmp_module = kobject_create_and_add(name, &dmp_root->kobj);
   if (dmp_module == NULL) {
-    LOG("could not create kobject for %s", name);
+    ERR("could not create kobject for %s", name);
     ti->error = "could not create object";
     return -ENOMEM;
   }
   LOG("dmp_module kobject created");
   ret = sysfs_create_file(dmp_module, &dmp_stat_attr.attr);
   if (ret) {
-    LOG("failed to create file");
+    ERR("failed to create file");
     dm_put_device(ti, dmp_stats.ddev);
     kobject_put(dmp_module);
     ti->error = "could not create file";
@@ -100,7 +100,7 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   LOG("file created");
   dmp_stats.module = dmp_module;
   if ((ret = list_push(dmp_stats))) {
-    LOG("could not push to list, no mem");
+    ERR("could not push to list, no mem");
     dm_put_device(ti, dmp_stats.ddev);
     ti->error = "could not push to list";
     kobject_put(dmp_module);
@@ -109,7 +109,6 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   LOG("pushed to list");
   LOG("ctr OK, proceeding...");
   ti->private = list_head.next;
-  LOG("NOTE: ti->private = 0x%lx", ti->private);
   return 0;
 }
 
@@ -129,7 +128,7 @@ void dmp_dtr(struct dm_target* ti) {
 static int dmp_map(struct dm_target* ti, struct bio* bio) {
   LOG("map called");
   if (ti == NULL || ti->private == NULL) {
-    LOG("ti or private is NULL, ti=0x%lx", ti);
+    ERR("ti or private is NULL, ti=0x%lx", ti);
     return -EINVAL;
   }
   LOG("NOTE: ti->private = 0x%lx", ti->private);
@@ -153,7 +152,7 @@ static ssize_t dmp_stat_show(struct kobject* kobj,
                              char* buf) {
   struct list* node = list_get_by_name(kobj->name);
   if (node == NULL) {
-    LOG("could not find %s", kobj->name);
+    ERR("could not find %s", kobj->name);
     return -ENOENT;
   }
   struct dmpstats dmp_stats = node->stats;
@@ -190,7 +189,7 @@ static int __init dmp_init(void) {
   dm_register_target(&dmp_target);
   dmp_root = kset_create_and_add("dmp", NULL, kernel_kobj);
   if (dmp_root == NULL) {
-    LOG("could not create dmp_root");
+    ERR("could not create dmp_root");
     return -ENOMEM;
   }
   LOG("registered dmp_target");
