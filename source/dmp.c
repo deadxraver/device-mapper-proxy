@@ -1,10 +1,6 @@
 #include "dmp.h"
 
-struct list {
-  struct dmpstats stats;
-  struct list* next;
-  struct list* prev;
-} list_head;
+#include <linux/container_of.h>
 
 static struct kset* dmp_root;
 
@@ -20,47 +16,20 @@ static struct target_type dmp_target = {
   .dtr      = dmp_dtr,
 };
 
-static void list_init(void) {
-  list_head.next = &list_head;
-  list_head.prev = &list_head;
-}
+static struct kobj_type dmp_kobj_type = {
+  .release = dmp_kobj_release,
+  .sysfs_ops = &kobj_sysfs_ops,
+};
 
-static int list_push(struct dmpstats contents) {
-  struct list* node = (struct list*) kvmalloc(sizeof(*node), GFP_KERNEL);
-  if (node == NULL) {
-    ERR("could not allocate node");
-    return -ENOMEM;
-  }
-  node->prev = &list_head;
-  node->next = list_head.next;
-  list_head.next = node;
-  node->next->prev = node;
-  node->stats = contents;
-  return 0;
-}
-
-static struct list* list_get_by_name(const char* name) {
-  for (struct list* node = list_head.next; node != &list_head; node = node->next) {
-    if (strcmp(node->stats.module->name, name) == 0)
-      return node;
-  }
-  return NULL;
-}
-
-static void list_destroy(void) {
-  struct list* node = list_head.next;
-  while (node != &list_head) {
-    sysfs_remove_file(node->stats.module, &dmp_stat_attr.attr);
-    kobject_put(node->stats.module);
-    struct list* tmp = node->next;
-    kvfree(node);
-    node = tmp;
-  }
+static void dmp_kobj_release(struct kobject* kobj) {
+  LOG("kobject %s release", kobj->name);
 }
 
 static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   LOG("ctr called");
   int ret;
+  struct kobject* dmp_module = NULL;
+  struct dmpstats* dmp_stats = NULL;
   if (argc != 1) {
     WRN("expecting only path to device");
     ti->error = "expecting only path to device";
@@ -75,53 +44,58 @@ static int dmp_ctr(struct dm_target* ti, unsigned int argc, char* argv[]) {
   ++name; // skip `/`
   LOG("path: %s", path);
   LOG("name: %s", name);
-  struct dmpstats dmp_stats = {0};
-  ret = dm_get_device(ti, path, dm_table_get_mode(ti->table), &dmp_stats.ddev);
+  dmp_stats = (struct dmpstats*)kvmalloc(sizeof(struct dmpstats), GFP_KERNEL);
+  if (dmp_stats == NULL) {
+    ERR("could not allocate memory for dmp_stats");
+    return -ENOMEM;
+  }
+  atomic_set(&dmp_stats->r_reqs, 0);
+  atomic_set(&dmp_stats->w_reqs, 0);
+  atomic64_set(&dmp_stats->r_blk_sum, 0);
+  atomic64_set(&dmp_stats->w_blk_sum, 0);
+  dmp_module = &dmp_stats->module;
+  ti->private = dmp_stats;
+  ret = dm_get_device(ti, path, dm_table_get_mode(ti->table), &dmp_stats->ddev);
   if (ret) {
     WRN("error getting device");
     ti->error = "cannot open device";
+    kvfree(ti->private);
+    ti->private = NULL;
     return ret;
   }
-  struct kobject* dmp_module = kobject_create_and_add(name, &dmp_root->kobj);
-  if (dmp_module == NULL) {
-    ERR("could not create kobject for %s", name);
-    ti->error = "could not create object";
-    return -ENOMEM;
+  ret = kobject_init_and_add(dmp_module, &dmp_kobj_type, &dmp_root->kobj, "%s", name);
+  if (ret) {
+    ERR("could not init object");
+    kvfree(ti->private);
+    ti->private = NULL;
+    return ret;
   }
-  LOG("dmp_module kobject created");
   ret = sysfs_create_file(dmp_module, &dmp_stat_attr.attr);
   if (ret) {
-    ERR("failed to create file");
-    dm_put_device(ti, dmp_stats.ddev);
+    ERR("failed to create sysfs file");
+    dm_put_device(ti, dmp_stats->ddev);
     kobject_put(dmp_module);
+    kvfree(ti->private);
+    ti->private = NULL;
     ti->error = "could not create file";
     return ret;
   }
   LOG("file created");
-  dmp_stats.module = dmp_module;
-  if ((ret = list_push(dmp_stats))) {
-    ERR("could not push to list, no mem");
-    dm_put_device(ti, dmp_stats.ddev);
-    ti->error = "could not push to list";
-    kobject_put(dmp_module);
-    return ret;
-  }
-  LOG("pushed to list");
-  LOG("ctr OK, proceeding...");
-  ti->private = list_head.next;
   return 0;
 }
 
-void dmp_dtr(struct dm_target* ti) {
+static void dmp_dtr(struct dm_target* ti) {
   LOG("dtr called");
-  struct list* node = (struct list*)ti->private;
-  LOG("deleting %s", node->stats.module->name);
-  node->prev->next = node->next;
-  node->next->prev = node->prev;
-  sysfs_remove_file(node->stats.module, &dmp_stat_attr.attr);
-  kobject_put(node->stats.module);
-  dm_put_device(ti, node->stats.ddev);
-  kvfree(node);
+  if (ti->private == NULL) {
+    WRN("called dtr for ti with NULL private field");
+    return;
+  }
+  struct dmpstats* dmp_stats = (struct dmpstats*)ti->private;
+  sysfs_remove_file(&dmp_stats->module, &dmp_stat_attr.attr);
+  kobject_put(&dmp_stats->module);
+  dm_put_device(ti, dmp_stats->ddev);
+  kvfree(dmp_stats);
+  ti->private = NULL;
   LOG("successfully deleted");
 }
 
@@ -131,17 +105,17 @@ static int dmp_map(struct dm_target* ti, struct bio* bio) {
     ERR("ti or private is NULL, ti=0x%lx", (unsigned long)ti);
     return -EINVAL;
   }
-  struct list* node = (struct list*)ti->private;
-  LOG("mapping %s", node->stats.module->name);
+  struct dmpstats* dmp_stats = (struct dmpstats*)ti->private;
+  LOG("mapping %s", dmp_stats->module.name);
   if (bio_op(bio) == REQ_OP_READ) {
-    atomic_inc(&node->stats.r_reqs);
-    atomic64_add(bio->bi_iter.bi_size, &node->stats.r_blk_sum);
+    atomic_inc(&dmp_stats->r_reqs);
+    atomic64_add(bio->bi_iter.bi_size, &dmp_stats->r_blk_sum);
   }
   if (bio_op(bio) == REQ_OP_WRITE) {
-    atomic_inc(&node->stats.w_reqs);
-    atomic64_add(bio->bi_iter.bi_size, &node->stats.w_blk_sum);
+    atomic_inc(&dmp_stats->w_reqs);
+    atomic64_add(bio->bi_iter.bi_size, &dmp_stats->w_blk_sum);
   }
-  bio_set_dev(bio, node->stats.ddev->bdev);
+  bio_set_dev(bio, dmp_stats->ddev->bdev);
   submit_bio_noacct(bio);
   return DM_MAPIO_SUBMITTED;
 }
@@ -149,15 +123,11 @@ static int dmp_map(struct dm_target* ti, struct bio* bio) {
 static ssize_t dmp_stat_show(struct kobject* kobj,
                              struct kobj_attribute* attr,
                              char* buf) {
-  struct list* node = list_get_by_name(kobj->name);
-  if (node == NULL) {
-    ERR("could not find %s", kobj->name);
-    return -ENOENT;
-  }
-  unsigned rr = atomic_read(&node->stats.r_reqs);
-  unsigned wr = atomic_read(&node->stats.w_reqs);
-  long rb = atomic64_read(&node->stats.r_blk_sum);
-  long wb = atomic64_read(&node->stats.w_blk_sum);
+  struct dmpstats* dmp_stats = container_of(kobj, struct dmpstats, module);
+  unsigned rr = atomic_read(&dmp_stats->r_reqs);
+  unsigned wr = atomic_read(&dmp_stats->w_reqs);
+  long rb = atomic64_read(&dmp_stats->r_blk_sum);
+  long wb = atomic64_read(&dmp_stats->w_blk_sum);
   return sprintf(
     buf,
     "read:\n"
@@ -187,7 +157,6 @@ static ssize_t dmp_stat_store(struct kobject* kobj,
 
 static int __init dmp_init(void) {
   LOG("init");
-  list_init();
   dm_register_target(&dmp_target);
   dmp_root = kset_create_and_add("dmp", NULL, kernel_kobj);
   if (dmp_root == NULL) {
@@ -200,7 +169,6 @@ static int __init dmp_init(void) {
 
 static void __exit dmp_exit(void) {
   LOG("exit");
-  list_destroy();
   kset_put(dmp_root);
   dm_unregister_target(&dmp_target);
 }
