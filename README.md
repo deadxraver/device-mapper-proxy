@@ -53,7 +53,7 @@ cd .. && scp -P 2222 -r device-mapper-proxy/ root@localhost:~
 make
 sudo lsmod | grep dm_mod
 sudo modprobe dm_mod # if previous showed nothing
-sudo insmod source.dmp.ko
+sudo insmod source/dmp.ko
 ```
 
 ```bash
@@ -91,13 +91,13 @@ cat /sys/kernel/dmp/zero1/dmp_stats
 ```
 # Output:
 read:
-	reqs: 124
+	reqs: 63
 	avg size: 4096
 write:
 	reqs: 1
 	avg_size: 4096
 total:
-	reqs: 125
+	reqs: 64
 	avg_size: 4096
 ```
 
