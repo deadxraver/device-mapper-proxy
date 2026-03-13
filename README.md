@@ -62,4 +62,12 @@ ls -la /dev/mapper/ | grep zero
 sudo dmsetup create dmp1 --table "0 1 dmp /dev/mapper/zero1"
 ```
 
-Currently `EINVAL` would be thrown after this.
+```bash
+ls -la /sys/kernel/dmp/
+# total 0
+# drwxr-xr-x  3 root root 0 Mar 13 09:32 .
+# drwxr-xr-x 15 root root 0 Mar 13 09:32 ..
+# drwxr-xr-x  2 root root 0 Mar 13 09:32 zero1
+cat /sys/kernel/dmp/zero1
+# Nothing to see here yet(zero1)
+```
