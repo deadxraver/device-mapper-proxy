@@ -57,9 +57,9 @@ sudo insmod source.dmp.ko
 ```
 
 ```bash
-sudo dmsetup create zero1 --table "0 1 zero"
+sudo dmsetup create zero1 --table "0 10000 zero"
 ls -la /dev/mapper/ | grep zero
-sudo dmsetup create dmp1 --table "0 1 dmp /dev/mapper/zero1"
+sudo dmsetup create dmp1 --table "0 10000 dmp /dev/mapper/zero1"
 ```
 
 ```bash
@@ -68,6 +68,35 @@ ls -la /sys/kernel/dmp/
 # drwxr-xr-x  3 root root 0 Mar 13 09:32 .
 # drwxr-xr-x 15 root root 0 Mar 13 09:32 ..
 # drwxr-xr-x  2 root root 0 Mar 13 09:32 zero1
-cat /sys/kernel/dmp/zero1
-# Nothing to see here yet(zero1)
+cat /sys/kernel/dmp/zero1/dmp_stats
+```
+```
+# Output:
+ read:
+	reqs: 62
+	avg size: 4096
+write:
+	reqs: 0
+	avg_size: 0
+total:
+	reqs: 62
+	avg_size: 4096
+```
+
+```bash
+dd if=/dev/urandom of=/dev/mapper/dmp1 oflag=direct bs=4K count=1
+dd if=/dev/mapper/dmp1 of=/dev/null iflag=direct bs=4K count=1
+cat /sys/kernel/dmp/zero1/dmp_stats
+```
+```
+# Output:
+read:
+	reqs: 124
+	avg size: 4096
+write:
+	reqs: 1
+	avg_size: 4096
+total:
+	reqs: 125
+	avg_size: 4096
 ```
