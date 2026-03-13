@@ -100,3 +100,17 @@ total:
 	reqs: 125
 	avg_size: 4096
 ```
+
+## Cleanup
+
+If you have created any dmp devices, they should first be removed before removing the module.
+
+```bash
+sudo dmsetup remove <dmp_name>
+sudo dmsetup remove dmp1 # dev from the example
+```
+
+Remove module by:
+```bash
+sudo rmmod dmp
+```
